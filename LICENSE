@@ -1,0 +1,67 @@
+Adviverse Android SDK License Agreement
+
+Copyright (c) 2026 Adviverse. All rights reserved.
+
+This Adviverse Android SDK License Agreement ("Agreement") governs your use of the
+AdviverseSDK Android software and any accompanying files (collectively, the "SDK"). By
+downloading, installing, or using the SDK, you ("You") agree to be bound by this
+Agreement. If you do not agree, do not use the SDK.
+
+1. Definitions.
+   "SDK" means the AdviverseSDK library, its source code, and accompanying files.
+   "Service" means the Adviverse advertising network and its APIs. "Adviverse
+   Terms" means the Adviverse Publisher/Developer terms of service applicable to
+   your account.
+
+2. License grant.
+   Subject to your continuous compliance with this Agreement and the Adviverse
+   Terms, Adviverse grants You a limited, non-exclusive, non-transferable,
+   non-sublicensable, revocable license to install and use the SDK, in unmodified
+   form, solely to integrate your application(s) with the Service.
+
+3. Restrictions.
+   Except as expressly permitted above, You may not: (a) modify, adapt, or create
+   derivative works of the SDK; (b) reverse engineer, decompile, or disassemble
+   the SDK, except to the extent applicable law expressly permits notwithstanding
+   this limitation; (c) remove, obscure, or alter any proprietary notices;
+   (d) redistribute, sell, sublicense, rent, lease, or lend the SDK on a
+   standalone basis; or (e) use the SDK to build or operate a service that
+   competes with the Service.
+
+4. Ownership.
+   The SDK is licensed, not sold. Adviverse and its licensors retain all right,
+   title, and interest in and to the SDK, including all intellectual property
+   rights. No rights are granted to You except as expressly set out in this
+   Agreement.
+
+5. Privacy and platform rules.
+   You are solely responsible for your own compliance with the Apple App Store
+   Review Guidelines, App Tracking Transparency, and all applicable privacy and
+   data-protection laws, and for obtaining any user consent required for the data
+   your application and the SDK process.
+
+6. No warranty.
+   THE SDK IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NONINFRINGEMENT.
+
+7. Limitation of liability.
+   TO THE MAXIMUM EXTENT PERMITTED BY LAW, ADVIVERSE SHALL NOT BE LIABLE FOR ANY
+   INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR EXEMPLARY DAMAGES, OR FOR ANY
+   LOSS OF PROFITS, REVENUE, DATA, OR GOODWILL, ARISING OUT OF OR RELATED TO THE
+   SDK OR THIS AGREEMENT, WHETHER IN CONTRACT, TORT, OR OTHERWISE, EVEN IF ADVISED
+   OF THE POSSIBILITY OF SUCH DAMAGES.
+
+8. Termination.
+   This Agreement is effective until terminated. It terminates automatically if
+   You breach any of its terms. Adviverse may also suspend or terminate the
+   license if You violate the Adviverse Terms. On termination, You must cease all
+   use of the SDK and delete all copies in your possession or control. Sections 4
+   and 6 through 10 survive termination.
+
+9. Governing terms.
+   This Agreement supplements, and is incorporated into, the Adviverse Terms. In
+   the event of a conflict regarding the SDK, this Agreement controls.
+
+10. Contact.
+    Licensing inquiries: legal@adviverse.com

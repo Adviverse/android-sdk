@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adviverse SDK library manifest.
+
+  - INTERNET / ACCESS_NETWORK_STATE: required to fetch ads + fire beacons.
+  - com.google.android.gms.permission.AD_ID: required on Android 13 (API 33)+
+    to read the Google Advertising ID. Omit it (override with tools:node="remove"
+    in the host app) only if your app must declare it does NOT use the Ad ID.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+
+    <application>
+        <!-- Full-screen renderer for interstitial + rewarded ads. Declared here
+             so host apps get it via manifest merging. A translucent/fullscreen
+             theme is recommended. -->
+        <activity
+            android:name="com.adviverse.sdk.AdviverseFullscreenActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:exported="false"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+    </application>
+
+</manifest>
