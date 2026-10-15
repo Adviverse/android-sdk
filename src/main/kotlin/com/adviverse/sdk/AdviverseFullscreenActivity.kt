@@ -10,9 +10,16 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import android.content.Intent
+import android.net.Uri
+import org.json.JSONObject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -78,6 +85,10 @@ class AdviverseFullscreenActivity : Activity() {
     private var impressionFired = false
     private var rewardSignaled = false
     private var closeButton: TextView? = null
+    private var isPlayable = false
+    private var imageView: ImageView? = null
+    private var playableView: WebView? = null
+    private var videoPlayer: AdviverseVideoPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -101,17 +112,28 @@ class AdviverseFullscreenActivity : Activity() {
             )
         }
 
-        val imageView = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            isClickable = true
-            contentDescription = p.ad.creative.title
-                ?: p.ad.creative.brandName ?: "Advertisement"
-            setOnClickListener { handleClick() }
-            layoutParams = FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
-            )
+        isPlayable = p.ad.creative.type == "html5"
+        if (isPlayable) {
+            playableView = buildPlayable(p.ad)
+            root.addView(playableView)
+        } else if (p.ad.isVideo) {
+            // Hosted video asset or a VAST-resolved MediaFile → VideoView.
+            videoPlayer = AdviverseVideoPlayer(this, p.ad, rewarded, VideoCallbacks(p))
+            root.addView(videoPlayer!!.view)
+        } else {
+            val imageView = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                isClickable = true
+                contentDescription = p.ad.creative.title
+                    ?: p.ad.creative.brandName ?: "Advertisement"
+                setOnClickListener { handleClick() }
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+                )
+            }
+            root.addView(imageView)
+            this.imageView = imageView
         }
-        root.addView(imageView)
 
         closeButton = TextView(this).apply {
             text = "✕"
@@ -129,7 +151,85 @@ class AdviverseFullscreenActivity : Activity() {
         root.addView(closeButton)
 
         setContentView(root)
-        loadCreative(p.ad, imageView)
+        imageView?.let { loadCreative(p.ad, it) }
+    }
+
+    // Build the WebView that hosts a playable (interactive HTML5) creative. The
+    // bundle is untrusted, so: it loads from our CDN over https (not file://),
+    // file/content access is disabled, and its ONLY channel back is the
+    // `AdviversePlayable` JavaScript interface — a single postMessage(String)
+    // that we parse. The injected runtime posts {__advPlayable,type} to it; we
+    // map ready→impression, click→click-through, finish→reward, close→dismiss.
+    private fun buildPlayable(ad: AdviverseAd): WebView {
+        val wv = WebView(this)
+        wv.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+        )
+        wv.setBackgroundColor(Color.BLACK)
+        wv.settings.apply {
+            javaScriptEnabled = true
+            domStorageEnabled = false
+            allowFileAccess = false
+            allowContentAccess = false
+            mediaPlaybackRequiresUserGesture = false
+            cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+        }
+        wv.addJavascriptInterface(PlayableBridge(), "AdviversePlayable")
+        wv.webViewClient = object : WebViewClient() {
+            // Keep the top frame on our document; any link the creative tries to
+            // navigate to opens in the system browser as a click instead. Both
+            // overloads implemented: the WebResourceRequest one is API 24+, the
+            // String one covers API 21–23 (minSdk 21).
+            override fun shouldOverrideUrlLoading(view: WebView, req: WebResourceRequest): Boolean =
+                externalize(req.url?.toString())
+
+            @Deprecated("Deprecated in API 24; retained for API 21–23.")
+            override fun shouldOverrideUrlLoading(view: WebView, url: String?): Boolean =
+                externalize(url)
+
+            private fun externalize(url: String?): Boolean {
+                if (url == null) return false
+                if (url == ad.creative.assetUrl) return false // the initial document
+                runOnUiThread {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                }
+                return true
+            }
+        }
+        val url = ad.creative.assetUrl
+        if (url == null) { finishWithClose() } else { wv.loadUrl(url) }
+        return wv
+    }
+
+    /** The single channel from the untrusted playable back to native code. */
+    private inner class PlayableBridge {
+        @JavascriptInterface
+        fun postMessage(json: String) {
+            val type = runCatching { JSONObject(json).optString("type") }.getOrNull() ?: return
+            handler.post { handlePlayableMessage(type) }
+        }
+    }
+
+    private fun handlePlayableMessage(type: String) {
+        val p = presentation ?: return
+        when (type) {
+            "ready" -> {
+                if (!impressionFired) {
+                    impressionFired = true
+                    Adviverse.fireImpression(p.ad)
+                    p.callbacks.onImpression()
+                }
+            }
+            "click" -> handleClick()
+            "finish" -> {
+                closeButton?.visibility = View.VISIBLE
+                if (rewarded && !rewardSignaled) {
+                    rewardSignaled = true
+                    p.callbacks.onRewardEarned()
+                }
+            }
+            "close" -> finishWithClose()
+        }
     }
 
     private fun loadCreative(ad: AdviverseAd, imageView: ImageView) {
@@ -148,6 +248,23 @@ class AdviverseFullscreenActivity : Activity() {
     override fun onResume() {
         super.onResume()
         val p = presentation ?: return
+        if (isPlayable) {
+            // The playable drives impression + reward via the bridge (ready /
+            // finish). We only schedule a FALLBACK close-button reveal so a
+            // broken creative can never trap the user.
+            val fallback = if (rewarded) maxOf(closeDelayMs, 5_000L) else maxOf(closeDelayMs, 3_000L)
+            handler.postDelayed({ closeButton?.visibility = View.VISIBLE }, fallback)
+            return
+        }
+        videoPlayer?.let { player ->
+            // Video drives impression/complete itself; schedule only a stall
+            // safety net so a buffering-forever stream can never trap the user.
+            player.resume()
+            val knownSec = p.ad.vast?.durationSec ?: p.ad.creative.duration?.toDouble() ?: 30.0
+            handler.postDelayed({ closeButton?.visibility = View.VISIBLE },
+                (maxOf(knownSec, 15.0) * 1000).toLong() + 10_000L)
+            return
+        }
         if (!impressionFired) {
             impressionFired = true
             Adviverse.fireImpression(p.ad)
@@ -164,6 +281,31 @@ class AdviverseFullscreenActivity : Activity() {
                 p.callbacks.onRewardEarned()
             }
         }, revealAt)
+    }
+
+    override fun onPause() {
+        videoPlayer?.pause()
+        super.onPause()
+    }
+
+    /** Bridges the video player's lifecycle to impression/reward/close. */
+    private inner class VideoCallbacks(private val p: Presentation) : AdviverseVideoPlayer.Listener {
+        override fun onStarted() {
+            if (impressionFired) return
+            impressionFired = true
+            Adviverse.fireImpression(p.ad)
+            p.callbacks.onImpression()
+        }
+        override fun onCompleted() {
+            closeButton?.visibility = View.VISIBLE
+            if (rewarded && !rewardSignaled) {
+                rewardSignaled = true
+                p.callbacks.onRewardEarned()
+            }
+        }
+        override fun onFailed() { closeButton?.visibility = View.VISIBLE }
+        override fun onClicked() = handleClick()
+        override fun onSkipped() = finishWithClose()
     }
 
     private fun handleClick() {
@@ -189,6 +331,14 @@ class AdviverseFullscreenActivity : Activity() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        videoPlayer?.release()
+        videoPlayer = null
+        playableView?.let {
+            it.removeJavascriptInterface("AdviversePlayable")
+            (it.parent as? ViewGroup)?.removeView(it)
+            it.destroy()
+        }
+        playableView = null
         clear(requestId)
         super.onDestroy()
     }

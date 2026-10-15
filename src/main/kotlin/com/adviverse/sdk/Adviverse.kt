@@ -177,6 +177,8 @@ object Adviverse {
             q.add("v", SDK_VERSION)
             q.add("os", "android")
             q.add("format", format.wire)
+            // Capability: this SDK resolves third-party VAST wrapper creatives.
+            q.add("vast", "1")
             size?.let {
                 if (it.width > 0) q.add("w", it.width.toString())
                 if (it.height > 0) q.add("h", it.height.toString())
@@ -202,9 +204,29 @@ object Adviverse {
         val (status, body) = httpGet(url, followRedirects = true)
         when {
             status == 204 -> null
-            status in 200..299 -> if (body.isBlank()) null else parseAd(body)
+            status in 200..299 -> if (body.isBlank()) null else resolveVast(parseAd(body))
             else -> throw AdviverseException("ad request failed: HTTP $status")
         }
+    }
+
+    /**
+     * A third-party VAST creative (no asset_url, a vast_tag_url) is resolved to a
+     * playable MediaFile before the load reports success. On failure the chain's
+     * `<Error>` URLs + our `ev=error` beacon fire and the load is a no-fill (null).
+     */
+    private fun resolveVast(ad: AdviverseAd): AdviverseAd? {
+        val tag = ad.creative.vastTagUrl
+        if (!ad.creative.needsVastResolution || tag == null) return ad
+        val res = AdviverseVast.resolve(
+            tag,
+            fetch = { u -> httpGet(u, true, "application/xml, text/xml, */*").let { (st, b) -> if (st in 200..299) b else null } },
+            newParser = { android.util.Xml.newPullParser() },
+        )
+        res.getOrNull()?.let { return ad.copy(vast = it) }
+        val f = res.exceptionOrNull() as? AdviverseVastFailure ?: AdviverseVastFailure(301, AdviverseVastResult())
+        AdviverseVast.fire(f.partial.errors, f.code)
+        ad.reportVideoError(f.code)
+        return null
     }
 
     /**
@@ -240,6 +262,7 @@ object Adviverse {
     fun fireImpression(ad: AdviverseAd) {
         val url = absolute(ad.impUrl) ?: return
         ioScope.launch { runCatching { httpGet(url, followRedirects = false) } }
+        AdviverseVast.fire(ad.vast?.impressions)
     }
 
     /**
@@ -251,6 +274,7 @@ object Adviverse {
      */
     @JvmStatic
     fun fireClick(ad: AdviverseAd) {
+        AdviverseVast.fire(ad.vast?.clickTrackings)
         val url = absolute(ad.clickUrl) ?: return
         ioScope.launch { runCatching { httpGet(url, followRedirects = false) } }
     }
@@ -263,6 +287,14 @@ object Adviverse {
      */
     @JvmStatic
     fun openClickThrough(context: Context, ad: AdviverseAd) {
+        // Third-party VAST: open its ClickThrough; record OUR click as a pixel
+        // (`/click?…&track=1`, no redirect) plus the chain's ClickTracking.
+        ad.vast?.clickThrough?.let { ct ->
+            absolute(ad.clickUrl)?.let { fireUrl("$it&track=1") }
+            AdviverseVast.fire(ad.vast.clickTrackings)
+            openUrl(context, ct)
+            return
+        }
         val url = absolute(ad.clickUrl) ?: ad.creative.landingUrl ?: return
         openUrl(context, url)
     }
@@ -366,14 +398,19 @@ object Adviverse {
         return if (pathOrUrl.startsWith("/")) base + pathOrUrl else "$base/$pathOrUrl"
     }
 
+    /** Fire-and-forget GET beacon to an absolute URL (third-party VAST trackers). */
+    internal fun fireUrl(url: String) {
+        ioScope.launch { runCatching { httpGet(url, followRedirects = false) } }
+    }
+
     /** GET returning (status, body). Used for the ad request + beacons. */
-    private fun httpGet(url: String, followRedirects: Boolean): Pair<Int, String> {
+    private fun httpGet(url: String, followRedirects: Boolean, accept: String = "application/json"): Pair<Int, String> {
         val client = if (followRedirects) http
         else http.newBuilder().followRedirects(false).followSslRedirects(false).build()
         val req = Request.Builder()
             .url(url)
             .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
+            .header("Accept", accept)
             .get()
             .build()
         client.newCall(req).execute().use { resp ->
@@ -442,6 +479,8 @@ object Adviverse {
             width = c.optIntOrNull("width"),
             height = c.optIntOrNull("height"),
             duration = c.optIntOrNull("duration"),
+            skipOffsetSec = c.optIntOrNull("skip_offset_sec"),
+            vastTagUrl = c.optStringOrNull("vast_tag_url"),
         )
 
         return AdviverseAd(
@@ -543,6 +582,10 @@ data class AdviverseCreative(
     val width: Int?,
     val height: Int?,
     val duration: Int?,
+    /** >0 = skippable after N seconds (video). */
+    val skipOffsetSec: Int? = null,
+    /** Third-party VAST tag; resolved during load when [assetUrl] is empty. */
+    val vastTagUrl: String? = null,
 ) {
     /** Best image URL to render: explicit banner asset, else native main image. */
     val imageUrl: String? get() = assetUrl ?: mainImageUrl
@@ -560,7 +603,12 @@ data class AdviverseAd(
     val clickUrl: String,
     /** Server-verified rewarded-completion URL (rewarded only; null otherwise). */
     val rewardUrl: String? = null,
-)
+    /** Resolved third-party VAST chain (wrapper creatives only; null otherwise). */
+    val vast: AdviverseVastResult? = null,
+) {
+    /** Per-ad dedup for video lifecycle events (see AdviverseVast.kt). */
+    internal val videoState = VideoEventState()
+}
 
 /** Callback for the non-coroutine [Adviverse.loadAd] overload. */
 interface AdLoadCallback {
