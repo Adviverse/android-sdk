@@ -1,5 +1,0 @@
-# JitPack builds this Android library in the cloud. AGP 8 requires JDK 17.
-jdk:
-  - openjdk17
-install:
-  - ./gradlew clean publishReleasePublicationToMavenLocal

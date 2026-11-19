@@ -1,10 +1,17 @@
-// Adviverse Android Ad SDK — standalone, publishable Gradle library.
-// Consumed via JitPack: implementation("com.github.Adviverse:android-sdk:<tag>")
+// Adviverse Android Ad SDK — Gradle library module.
+//
+// A dependency-light native client for the Adviverse ad engine `/mobile/ad`
+// endpoint. Networking is OkHttp; concurrency is Kotlin coroutines. The only
+// other runtime dependency is Play Services' advertising-id client, used to
+// resolve the GAID + Limit-Ad-Tracking flag.
+//
+// Consume from an app module with:
+//     implementation(project(":adviverse-sdk"))
+// or, once published, the Maven coordinates documented in README.md.
 
 plugins {
-    id("com.android.library") version "8.2.2"
-    kotlin("android") version "1.9.24"
-    id("maven-publish")
+    id("com.android.library")
+    kotlin("android")
 }
 
 android {
@@ -13,7 +20,9 @@ android {
 
     defaultConfig {
         minSdk = 21
-        // SDK version reported to the engine for server-side version gating.
+        targetSdk = 34
+        // SDK version reported to the engine for server-side version gating
+        // (an outdated/exploitable build can be force-updated to "no-fill").
         buildConfigField("String", "SDK_VERSION", "\"1.1.0\"")
         consumerProguardFiles("consumer-rules.pro")
     }
@@ -23,6 +32,8 @@ android {
         compose = true
     }
     // Compose compiler for AdviverseAdComposable.kt (Kotlin 1.9.24 <-> 1.5.14).
+    // Without it @Composable compiles as a plain function and crashes when
+    // called from a composition.
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.14"
     }
@@ -34,46 +45,31 @@ android {
 
     kotlinOptions {
         jvmTarget = "1.8"
-        // Expose `suspend` entry points to Java callers via generated overloads.
+        // Expose `suspend` entry points to Java callers via the generated
+        // continuation overloads; keep the public surface stable.
         freeCompilerArgs = freeCompilerArgs + "-Xjvm-default=all"
-    }
-
-    // Single-variant publishing (the release AAR + a sources jar).
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
     }
 }
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // Advertising ID (GAID) + Limit-Ad-Tracking; degrades to a first-party UUID.
+
+    // Advertising ID (GAID) + Limit-Ad-Tracking. `implementation` so the SDK
+    // can resolve the id out of the box; apps that ship their own copy can
+    // exclude it and the SDK degrades gracefully to a first-party UUID.
     implementation("com.google.android.gms:play-services-ads-identifier:18.0.1")
 
-    // Compose host (AdviverseAdComposable.kt). compileOnly: View-based apps are
-    // not forced onto Compose; apps calling `AdviverseAd { }` already have it.
+    // Compose host (AdviverseAdComposable.kt). compileOnly: the SDK does not
+    // force Compose on View-based consumers; apps using `AdviverseAd { }` must
+    // already depend on Compose UI. Never touched at runtime unless called.
     compileOnly("androidx.compose.ui:ui:1.6.8")
     compileOnly("androidx.compose.runtime:runtime:1.6.8")
 
-    // JVM unit tests (VAST resolver). Test-only, never shipped in the AAR.
+    // JVM unit tests (src/test): JUnit + kXML2 as a stand-in XmlPullParser for
+    // the VAST resolver tests. Test-only — never shipped in the AAR.
     testImplementation("junit:junit:4.13.2")
     testImplementation("net.sf.kxml:kxml2:2.3.0")
     // The Compose compiler needs the runtime on every compiled classpath, tests included.
     testImplementation("androidx.compose.runtime:runtime:1.6.8")
-}
-
-// Maven publication (JitPack rewrites the group to com.github.Adviverse).
-publishing {
-    publications {
-        register<MavenPublication>("release") {
-            groupId = "com.adviverse"
-            artifactId = "sdk"
-            version = "1.1.0"
-            afterEvaluate {
-                from(components["release"])
-            }
-        }
-    }
 }
