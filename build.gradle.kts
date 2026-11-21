@@ -15,7 +15,7 @@ android {
         minSdk = 21
         targetSdk = 34
         // SDK version reported to the engine for server-side version gating.
-        buildConfigField("String", "SDK_VERSION", "\"1.1.1\"")
+        buildConfigField("String", "SDK_VERSION", "\"1.1.2\"")
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -71,7 +71,7 @@ publishing {
         register<MavenPublication>("release") {
             groupId = "com.adviverse"
             artifactId = "sdk"
-            version = "1.1.1"
+            version = "1.1.2"
             afterEvaluate {
                 from(components["release"])
             }

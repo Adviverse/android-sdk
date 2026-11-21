@@ -34,7 +34,7 @@ In your app module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.Adviverse:android-sdk:1.1.1")
+    implementation("com.github.Adviverse:android-sdk:1.1.2")
 }
 ```
 
