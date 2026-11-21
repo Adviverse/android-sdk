@@ -31,7 +31,7 @@ import java.util.concurrent.TimeUnit
  *
  * ## Quick start
  * ```
- * Adviverse.configure(context, tag = "pub-123-banner", baseUrl = "https://ads.adviverse.com")
+ * Adviverse.configure(context, tag = "pub-123-banner", baseUrl = "https://serve.adviverse.com")
  *
  * // Coroutine:
  * val ad = Adviverse.loadAd("home-banner", AdSize.BANNER)
@@ -78,6 +78,8 @@ object Adviverse {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Volatile private var appContext: Context? = null
+    const val DEFAULT_BASE_URL = "https://serve.adviverse.com"
+
     @Volatile private var baseUrl: String? = null
     @Volatile private var defaultTag: String? = null
 
@@ -95,10 +97,12 @@ object Adviverse {
      * @param context   any context; the application context is retained.
      * @param tag       the publisher's default ad tag (used when [loadAd] is
      *                  called without an explicit placement).
-     * @param baseUrl   the engine origin, e.g. `https://ads.adviverse.com`.
+     * @param baseUrl   the engine origin; defaults to `https://serve.adviverse.com` (pass your
+     *                  custom serving domain, e.g. `https://ads.example.com`, if you set one).
      */
     @JvmStatic
-    fun configure(context: Context, tag: String, baseUrl: String) {
+    @JvmOverloads
+    fun configure(context: Context, tag: String, baseUrl: String = DEFAULT_BASE_URL) {
         this.appContext = context.applicationContext
         this.defaultTag = tag.trim().ifEmpty { null }
         this.baseUrl = baseUrl.trim().trimEnd('/')

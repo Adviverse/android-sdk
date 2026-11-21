@@ -16,21 +16,25 @@ the impression / click beacons the engine returns.
 
 ## Install
 
-### Gradle (module dependency)
+### Gradle (JitPack)
 
-Add the module to `settings.gradle.kts`:
+In `settings.gradle.kts`:
 
 ```kotlin
-include(":adviverse-sdk")
-project(":adviverse-sdk").projectDir =
-    file("sdks/mobile/android")
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven("https://jitpack.io")
+    }
+}
 ```
 
-Then in your app module's `build.gradle.kts`:
+In your app module's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation(project(":adviverse-sdk"))
+    implementation("com.github.Adviverse:android-sdk:1.1.1")
 }
 ```
 
@@ -50,8 +54,8 @@ Configure once at app startup (e.g. in `Application.onCreate`):
 ```kotlin
 Adviverse.configure(
     context = this,
-    tag = "pub-123-default",            // your default ad tag
-    baseUrl = "https://ads.adviverse.com",
+    tag = "tk_…",                        // your placement tag (Dashboard → Placements, or the API)
+    // baseUrl = "https://ads.example.com", // only if you set a custom serving domain
 )
 ```
 
